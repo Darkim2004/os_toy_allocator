@@ -1,0 +1,5 @@
+tests
+*.o
+*.out
+*.exe
+.vscode/
