@@ -54,6 +54,7 @@ static void calloc_test(int verbose) {
     my_free(v);
 }
 
+// TODO srand e rand su un multithread
 static void* thread_test(void* arg) {
     unsigned int seed = (unsigned int)(uintptr_t)arg;
     for (int i = 0; i < 100; i++) {
