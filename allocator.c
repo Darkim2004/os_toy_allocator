@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <errno.h>
+#include <pthread.h>
 
 typedef struct block_header {
     size_t size;               // payload size in bytes
@@ -18,6 +19,7 @@ typedef struct block_header {
 static void* g_heap_start = NULL;
 static size_t g_heap_size = 0;
 static block_header_t* g_head = NULL;
+static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
 static size_t page_align_up(size_t n) {
     long ps = sysconf(_SC_PAGESIZE);
@@ -119,8 +121,12 @@ void allocator_destroy(void) {
 
 void* my_malloc(size_t size) {
     if (size == 0) return NULL;
+
+    pthread_mutex_lock(&lock);
+
     if (!g_heap_start) {
         errno = ENODEV;
+        pthread_mutex_unlock(&lock);
         return NULL;
     }
 
@@ -129,11 +135,13 @@ void* my_malloc(size_t size) {
     block_header_t* b = find_free_block(size);
     if (!b) {
         errno = ENOMEM;
+        pthread_mutex_unlock(&lock);
         return NULL;
     }
 
     split_block(b, size);
     b->free = 0;
+    pthread_mutex_unlock(&lock);
     return payload_from_header(b);
 }
 
@@ -141,14 +149,19 @@ void my_free(void* ptr) {
     if (!ptr) return;
     if (!g_heap_start) return;
 
+    pthread_mutex_lock(&lock);
     uint8_t* p = (uint8_t*)ptr;
     uint8_t* start = (uint8_t*)g_heap_start;
     uint8_t* end = start + g_heap_size;
-    if (p < start + sizeof(block_header_t) || p >= end) return;
+    if (p < start + sizeof(block_header_t) || p >= end){
+        pthread_mutex_unlock(&lock);
+        return;
+    };
 
     block_header_t* b = header_from_payload(ptr);
     b->free = 1;
     coalesce(b);
+    pthread_mutex_unlock(&lock);
 }
 
 void* my_calloc(size_t nmemb, size_t size) {
@@ -166,6 +179,7 @@ void* my_calloc(size_t nmemb, size_t size) {
     return p;
 }
 
+//TODO: add my_malloc_locked
 void* my_realloc(void* ptr, size_t new_size) {
     if (!g_heap_start) {
         errno = ENODEV;
@@ -213,6 +227,7 @@ void allocator_dump(void) {
         return;
     }
 
+    pthread_mutex_lock(&lock);
     printf("[allocator] heap=%p size=%zu\n", g_heap_start, g_heap_size);
     int i = 0;
     for (block_header_t* cur = g_head; cur; cur = cur->next, ++i) {
@@ -220,4 +235,5 @@ void allocator_dump(void) {
                i, (void*)cur, payload_from_header(cur), cur->size, cur->free,
                (void*)cur->next, (void*)cur->prev);
     }
+    pthread_mutex_unlock(&lock);
 }
