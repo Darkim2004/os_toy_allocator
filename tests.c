@@ -57,7 +57,8 @@ static void calloc_test(int verbose) {
 static void* thread_test(void* arg) {
     unsigned int seed = (unsigned int)(uintptr_t)arg;
     for (int i = 0; i < 100; i++) {
-        int r = rand_r(&seed) % 2;
+        srand(seed);
+        int r = rand() % 2;
 
         if (r == 0) {
             basic_test(0);
