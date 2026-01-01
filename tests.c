@@ -5,7 +5,7 @@
 #include <pthread.h>
 #include <stdint.h>
 
-pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_mutex_t test_lock = PTHREAD_MUTEX_INITIALIZER;
 int counter = 0;
 
 static void basic_test(int verbose) {
@@ -25,9 +25,9 @@ static void basic_test(int verbose) {
 
     if (verbose) allocator_dump();
     else{
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&test_lock);
         counter++;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&test_lock);
     }
 }
 
@@ -49,9 +49,9 @@ static void realloc_test(int verbose) {
     my_free(p);
     if (verbose) allocator_dump();
     else{
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&test_lock);
         counter++;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&test_lock);
     }
 }
 
@@ -65,9 +65,9 @@ static void calloc_test(int verbose) {
     }
     if (verbose) printf("calloc zeroed: %s\n", ok ? "yes" : "no");
     if(!verbose && ok) {
-        pthread_mutex_lock(&lock);
+        pthread_mutex_lock(&test_lock);
         counter++;
-        pthread_mutex_unlock(&lock);
+        pthread_mutex_unlock(&test_lock);
     }
     
     my_free(v);
@@ -106,7 +106,7 @@ void thread_safety_test() {
     for (int i = 0; i < cpuN; i++) {
         pthread_join(threads[i], NULL);
     }
-    printf("\nThread safety test passed: %d/800\n", counter);
+    printf("Thread safety test passed: %d/800\n", counter);
 }
 
 int main(int argc, char** argv) {
