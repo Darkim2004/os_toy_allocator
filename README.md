@@ -10,6 +10,7 @@ Implements simplified versions of `malloc`, `free`, `calloc`, and `realloc` for 
 - Block splitting on allocation
 - Coalescing (merge) of adjacent free blocks on `free`
 - `realloc` tries to grow in-place when the next block is free; otherwise it allocates + copies + frees
+- Thread-safe API (using a global mutex) to support concurrent access
 
 ## Build & run
 
