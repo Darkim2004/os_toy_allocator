@@ -145,7 +145,53 @@ void* my_malloc(size_t size) {
     return payload_from_header(b);
 }
 
+// Function only for the realloc that already has a lock
+static void* my_malloc_locked(size_t size) {
+    if (size == 0) return NULL;
+
+    pthread_mutex_lock(&lock);
+
+    if (!g_heap_start) {
+        errno = ENODEV;
+        pthread_mutex_unlock(&lock);
+        return NULL;
+    }
+
+    size = align_up(size);
+
+    block_header_t* b = find_free_block(size);
+    if (!b) {
+        errno = ENOMEM;
+        pthread_mutex_unlock(&lock);
+        return NULL;
+    }
+
+    split_block(b, size);
+    b->free = 0;
+    pthread_mutex_unlock(&lock);
+    return payload_from_header(b);
+}
+
 void my_free(void* ptr) {
+    if (!ptr) return;
+    if (!g_heap_start) return;
+
+    pthread_mutex_lock(&lock);
+    uint8_t* p = (uint8_t*)ptr;
+    uint8_t* start = (uint8_t*)g_heap_start;
+    uint8_t* end = start + g_heap_size;
+    if (p < start + sizeof(block_header_t) || p >= end){
+        pthread_mutex_unlock(&lock);
+        return;
+    };
+
+    block_header_t* b = header_from_payload(ptr);
+    b->free = 1;
+    coalesce(b);
+    pthread_mutex_unlock(&lock);
+}
+
+void my_free_locked(void* ptr) {
     if (!ptr) return;
     if (!g_heap_start) return;
 
@@ -186,9 +232,16 @@ void* my_realloc(void* ptr, size_t new_size) {
         return NULL;
     }
 
-    if (!ptr) return my_malloc(new_size);
+    pthread_mutex_lock(&lock);
+    if (!ptr){
+        void* temp = my_malloc_locked(new_size);
+        pthread_mutex_unlock(&lock);
+        return temp;
+    }
+
     if (new_size == 0) {
-        my_free(ptr);
+        my_free_locked(ptr);
+        pthread_mutex_unlock(&lock);
         return NULL;
     }
 
@@ -197,6 +250,7 @@ void* my_realloc(void* ptr, size_t new_size) {
     block_header_t* b = header_from_payload(ptr);
     if (b->size >= new_size) {
         split_block(b, new_size);
+        pthread_mutex_unlock(&lock);
         return ptr;
     }
 
@@ -209,15 +263,20 @@ void* my_realloc(void* ptr, size_t new_size) {
             if (b->next) b->next->prev = b;
 
             split_block(b, new_size);
+            pthread_mutex_unlock(&lock);
             return payload_from_header(b);
         }
     }
 
     void* newp = my_malloc(new_size);
-    if (!newp) return NULL;
+    if (!newp) {
+        pthread_mutex_unlock(&lock);
+        return NULL;
+    }
 
     memcpy(newp, ptr, b->size);
     my_free(ptr);
+    pthread_mutex_unlock(&lock);
     return newp;
 }
 
