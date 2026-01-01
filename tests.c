@@ -91,6 +91,11 @@ static void* thread_test(void* arg) {
         } else {
             realloc_test(0);
         }
+        // Lil loading animation
+        if (i % 10 == 0) {
+            printf(".");
+            fflush(stdout);
+        }
     }
     return NULL;
 }
@@ -106,7 +111,7 @@ void thread_safety_test() {
     for (int i = 0; i < cpuN; i++) {
         pthread_join(threads[i], NULL);
     }
-    printf("Thread safety test passed: %d/800\n", counter);
+    printf("\nThread safety test passed: %d/800\n", counter);
 }
 
 int main(int argc, char** argv) {
