@@ -32,7 +32,6 @@ You can pass the heap size (in bytes) as the first command-line argument.
 
 This repository contains **educational toy code**:
 
-- Not thread-safe (no locking)
 - Single fixed-size heap (no heap growth)
 - Basic sanity checks only (no full corruption detection)
 - Minimal alignment handling (sufficient for the demo, not production-grade)
