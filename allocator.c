@@ -21,6 +21,9 @@ static size_t g_heap_size = 0;
 static block_header_t* g_head = NULL;
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
 
+static void* my_malloc_locked(size_t size);
+static void my_free_locked(void* ptr);
+
 static size_t page_align_up(size_t n) {
     long ps = sysconf(_SC_PAGESIZE);
     size_t page = (ps > 0) ? (size_t)ps : 4096u;
@@ -120,40 +123,17 @@ void allocator_destroy(void) {
 }
 
 void* my_malloc(size_t size) {
-    if (size == 0) return NULL;
-
     pthread_mutex_lock(&lock);
-
-    if (!g_heap_start) {
-        errno = ENODEV;
-        pthread_mutex_unlock(&lock);
-        return NULL;
-    }
-
-    size = align_up(size);
-
-    block_header_t* b = find_free_block(size);
-    if (!b) {
-        errno = ENOMEM;
-        pthread_mutex_unlock(&lock);
-        return NULL;
-    }
-
-    split_block(b, size);
-    b->free = 0;
+    void* ptr = my_malloc_locked(size);
     pthread_mutex_unlock(&lock);
-    return payload_from_header(b);
+    return ptr;
 }
 
-// Function only for the realloc that already has a lock
 static void* my_malloc_locked(size_t size) {
     if (size == 0) return NULL;
 
-    pthread_mutex_lock(&lock);
-
     if (!g_heap_start) {
         errno = ENODEV;
-        pthread_mutex_unlock(&lock);
         return NULL;
     }
 
@@ -162,52 +142,34 @@ static void* my_malloc_locked(size_t size) {
     block_header_t* b = find_free_block(size);
     if (!b) {
         errno = ENOMEM;
-        pthread_mutex_unlock(&lock);
         return NULL;
     }
 
     split_block(b, size);
     b->free = 0;
-    pthread_mutex_unlock(&lock);
     return payload_from_header(b);
 }
 
 void my_free(void* ptr) {
-    if (!ptr) return;
-    if (!g_heap_start) return;
-
     pthread_mutex_lock(&lock);
-    uint8_t* p = (uint8_t*)ptr;
-    uint8_t* start = (uint8_t*)g_heap_start;
-    uint8_t* end = start + g_heap_size;
-    if (p < start + sizeof(block_header_t) || p >= end){
-        pthread_mutex_unlock(&lock);
-        return;
-    };
-
-    block_header_t* b = header_from_payload(ptr);
-    b->free = 1;
-    coalesce(b);
+    my_free_locked(ptr);
     pthread_mutex_unlock(&lock);
 }
 
-void my_free_locked(void* ptr) {
+static void my_free_locked(void* ptr) {
     if (!ptr) return;
     if (!g_heap_start) return;
 
-    pthread_mutex_lock(&lock);
     uint8_t* p = (uint8_t*)ptr;
     uint8_t* start = (uint8_t*)g_heap_start;
     uint8_t* end = start + g_heap_size;
     if (p < start + sizeof(block_header_t) || p >= end){
-        pthread_mutex_unlock(&lock);
         return;
     };
 
     block_header_t* b = header_from_payload(ptr);
     b->free = 1;
     coalesce(b);
-    pthread_mutex_unlock(&lock);
 }
 
 void* my_calloc(size_t nmemb, size_t size) {
@@ -225,7 +187,6 @@ void* my_calloc(size_t nmemb, size_t size) {
     return p;
 }
 
-//TODO: add my_malloc_locked
 void* my_realloc(void* ptr, size_t new_size) {
     if (!g_heap_start) {
         errno = ENODEV;
@@ -268,14 +229,14 @@ void* my_realloc(void* ptr, size_t new_size) {
         }
     }
 
-    void* newp = my_malloc(new_size);
+    void* newp = my_malloc_locked(new_size);
     if (!newp) {
         pthread_mutex_unlock(&lock);
         return NULL;
     }
 
     memcpy(newp, ptr, b->size);
-    my_free(ptr);
+    my_free_locked(ptr);
     pthread_mutex_unlock(&lock);
     return newp;
 }
