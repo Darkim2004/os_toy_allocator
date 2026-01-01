@@ -54,12 +54,16 @@ static void calloc_test(int verbose) {
     my_free(v);
 }
 
-// TODO srand e rand su un multithread
+// Simple LCG to avoid rand() thread-safety issues and rand_r deprecation
+static int next_rand(unsigned int* seed) {
+    *seed = *seed * 1103515245 + 12345;
+    return (int)((*seed >> 16) & 0x7fff);
+}
+
 static void* thread_test(void* arg) {
     unsigned int seed = (unsigned int)(uintptr_t)arg;
     for (int i = 0; i < 100; i++) {
-        srand(seed);
-        int r = rand() % 2;
+        int r = next_rand(&seed) % 2;
 
         if (r == 0) {
             basic_test(0);
