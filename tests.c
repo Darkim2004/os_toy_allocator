@@ -5,6 +5,9 @@
 #include <pthread.h>
 #include <stdint.h>
 
+pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+int counter = 0;
+
 static void basic_test(int verbose) {
     if (verbose) printf("== basic_test ==\n");
     char* a = (char*)my_malloc(20);
@@ -21,6 +24,11 @@ static void basic_test(int verbose) {
     my_free(b);
 
     if (verbose) allocator_dump();
+    else{
+        pthread_mutex_lock(&lock);
+        counter++;
+        pthread_mutex_unlock(&lock);
+    }
 }
 
 static void realloc_test(int verbose) {
@@ -40,6 +48,11 @@ static void realloc_test(int verbose) {
 
     my_free(p);
     if (verbose) allocator_dump();
+    else{
+        pthread_mutex_lock(&lock);
+        counter++;
+        pthread_mutex_unlock(&lock);
+    }
 }
 
 static void calloc_test(int verbose) {
@@ -51,6 +64,12 @@ static void calloc_test(int verbose) {
         if (v[i] != 0) ok = 0;
     }
     if (verbose) printf("calloc zeroed: %s\n", ok ? "yes" : "no");
+    if(!verbose && ok) {
+        pthread_mutex_lock(&lock);
+        counter++;
+        pthread_mutex_unlock(&lock);
+    }
+    
     my_free(v);
 }
 
@@ -70,12 +89,7 @@ static void* thread_test(void* arg) {
         } else if (r == 1) {
             calloc_test(0);
         } else {
-            //realloc_test(0); Not implemented yet
-        }
-        // Prints a dot every 10 iterations
-        if (i % 10 == 0) {
-            printf(".");
-            fflush(stdout);
+            realloc_test(0);
         }
     }
     return NULL;
@@ -92,7 +106,7 @@ void thread_safety_test() {
     for (int i = 0; i < cpuN; i++) {
         pthread_join(threads[i], NULL);
     }
-    printf("\nThread safety test passed!\n");
+    printf("\nThread safety test passed: %d/800\n", counter);
 }
 
 int main(int argc, char** argv) {
